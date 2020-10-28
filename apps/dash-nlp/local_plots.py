@@ -22,17 +22,17 @@ pd.set_option("display.width", desired_width)
 
 def main():
 
-    comp_df = pd.read_csv("data/customer_complaints_narrative_sample.csv", index_col=0)
+    comp_df = pd.read_csv("data/tilytd-20201022.csv", index_col=0)
 
     # ===============================================
     # ========== EXPLORATORY DATA ANALYSIS ==========
     # ===============================================
     # Complaints by date
     fig = px.histogram(
-        comp_df, x="datetime", template="plotly_white", title="Complaint counts by date"
+        comp_df, x="Timestamp", template="plotly_white", title="TIL counts by date"
     )
     fig.update_xaxes(categoryorder="category descending", title="Date").update_yaxes(
-        title="Number of complaints"
+        title="Number of TILs"
     )
     fig.update_layout(width=1200, height=500)
     fig.show()
@@ -42,12 +42,12 @@ def main():
         comp_df,
         x="Words_clipped",
         template="plotly_white",
-        title="Complain counts by length",
+        title="TIL counts by length",
     )
     fig.update_xaxes(
         categoryorder="total descending",
         title="Number of words (clipped at 1000 words)",
-    ).update_yaxes(title="Number of complaints")
+    ).update_yaxes(title="Number of TILs")
     fig.update_layout(width=1200, height=500)
     fig.show()
 
@@ -55,22 +55,22 @@ def main():
     # ========== Top n companies only ==========
     # Pre-processing data
     top_comps = (
-        comp_df.groupby("Company")["Date received"]
+        comp_df.groupby("User Company")["Timestamp"]
         .count()
         .sort_values(ascending=False)[:10]
         .index
     )
-    top_comps_df = comp_df[comp_df["Company"].isin(top_comps)]
+    top_comps_df = comp_df[comp_df["User Company"].isin(top_comps)]
 
     # Top companies by complaints
     fig = px.histogram(
         top_comps_df,
-        x="Company",
+        x="User Company",
         template="plotly_white",
-        title="Complaint counts by company",
+        title="TIL counts by company",
     )
     fig.update_xaxes(categoryorder="total descending").update_yaxes(
-        title="Number of complaints"
+        title="Number of TILs"
     )
     fig.update_layout(width=1200, height=500)
     fig.show()
@@ -78,16 +78,16 @@ def main():
     # Complaints by company & date
     fig = px.histogram(
         top_comps_df,
-        x="datetime",
+        x="Timestamp",
         template="plotly_white",
-        title="Complaint counts by date & company",
-        color="Company",
+        title="TILs counts by date & company",
+        color="User Company",
         nbins=6,
         log_y=True,
         barmode="group",
     )
     fig.update_xaxes(categoryorder="category descending", title="Date").update_yaxes(
-        title="Number of complaints"
+        title="Number of TILs"
     )
     fig.update_layout(width=1200, height=500)
     fig.show()
@@ -112,7 +112,7 @@ def main():
     fig = px.treemap(
         top_comps_df,
         title="Treemap chart by companies and whether complaint mentions credit report",
-        path=["Company", "credit_report"],
+        path=["User Company", "credit_report"],
         color="Words",
         color_continuous_scale=px.colors.sequential.GnBu,
     )

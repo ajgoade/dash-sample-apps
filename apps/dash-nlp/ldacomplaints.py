@@ -48,8 +48,8 @@ def lda_analysis(df, stop_words):
         return tokens
 
     # Clean up and take only rows where we have text
-    df = df[pd.notnull(df["Consumer complaint narrative"])]
-    docs = list(df["Consumer complaint narrative"].values)
+    df = df[pd.notnull(df["Conversation Notes"])]
+    docs = list(df["Conversation Notes"].values)
 
     punctuations = string.punctuation
 

@@ -7,7 +7,7 @@ import json
 
 DATA_PATH = pathlib.Path(__file__).parent.resolve()
 EXTERNAL_STYLESHEETS = ["https://codepen.io/chriddyp/pen/bWLwgP.css"]
-FILENAME = "data/customer_complaints_narrative_sample.csv"
+FILENAME = "data/tilytd-20201022.csv"
 GLOBAL_DF = pd.read_csv(DATA_PATH.joinpath(FILENAME), header=0)
 
 """
@@ -51,14 +51,14 @@ def precompute_all_lda():
 
     failed_banks = []
     counter = 0
-    bank_names = GLOBAL_DF["Company"].value_counts().keys().tolist()
+    bank_names = GLOBAL_DF["User Company"].value_counts().keys().tolist()
     results = {}
 
     for bank in bank_names:
         try:
             print("crunching LDA for: ", bank)
             add_stopwords(bank)
-            bank_df = GLOBAL_DF[GLOBAL_DF["Company"] == bank]
+            bank_df = GLOBAL_DF[GLOBAL_DF["User Company"] == bank]
             tsne_lda, lda_model, topic_num, df_dominant_topic = lda_analysis(
                 bank_df, list(STOPWORDS)
             )
@@ -108,7 +108,7 @@ def precompute_all_lda():
 
             counter += 1
         except:
-            print("SOMETHING WENT HORRIBLY WRONG WITH BANK: ", bank)
+            print("SOMETHING WENT HORRIBLY WRONG WITH: ", bank)
             failed_banks.append(bank)
 
     with open("data/precomputed.json", "w+") as res_file:

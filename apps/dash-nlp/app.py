@@ -34,9 +34,9 @@ bigram_df = pd.read_csv("data/bigram_counts_data.csv", index_col=0)
 
 DATA_PATH = pathlib.Path(__file__).parent.resolve()
 EXTERNAL_STYLESHEETS = ["https://codepen.io/chriddyp/pen/bWLwgP.css"]
-FILENAME = "data/customer_complaints_narrative_sample.csv"
+FILENAME = "data/tilytd-20201022.csv"
 FILENAME_PRECOMPUTED = "data/precomputed.json"
-PLOTLY_LOGO = "https://images.plot.ly/logo/new-branding/plotly-logomark.png"
+PLOTLY_LOGO = "https://www.datastax.com/sites/default/files/inline-images/DS_Logo_Secondary.png"
 GLOBAL_DF = pd.read_csv(DATA_PATH.joinpath(FILENAME), header=0)
 with open(DATA_PATH.joinpath(FILENAME_PRECOMPUTED)) as precomputed_file:
     PRECOMPUTED_LDA = json.load(precomputed_file)
@@ -45,8 +45,8 @@ with open(DATA_PATH.joinpath(FILENAME_PRECOMPUTED)) as precomputed_file:
 We are casting the whole column to datetime to make life easier in the rest of the code.
 It isn't a terribly expensive operation so for the sake of tidyness we went this way.
 """
-GLOBAL_DF["Date received"] = pd.to_datetime(
-    GLOBAL_DF["Date received"], format="%m/%d/%Y"
+GLOBAL_DF["Timestamp"] = pd.to_datetime(
+    GLOBAL_DF["Timestamp"], format="%m/%d/%Y"
 )
 
 """
@@ -126,9 +126,9 @@ def sample_data(dataframe, float_percent):
 
 def get_complaint_count_by_company(dataframe):
     """ Helper function to get complaint counts for unique banks """
-    company_counts = dataframe["Company"].value_counts()
+    company_counts = dataframe["User Company"].value_counts()
     # we filter out all banks with less than 11 complaints for now
-    company_counts = company_counts[company_counts > 10]
+#    company_counts = company_counts[company_counts > 10]
     values = company_counts.keys().tolist()
     counts = company_counts.tolist()
     return values, counts
@@ -144,10 +144,10 @@ def calculate_bank_sample_data(dataframe, sample_size, time_values):
         min_date = time_values[0]
         max_date = time_values[1]
         dataframe = dataframe[
-            (dataframe["Date received"] >= min_date)
-            & (dataframe["Date received"] <= max_date)
+            (dataframe["Timestamp"] >= min_date)
+            & (dataframe["Timestamp"] <= max_date)
         ]
-    company_counts = dataframe["Company"].value_counts()
+    company_counts = dataframe["User Company"].value_counts()
     company_counts_sample = company_counts[:sample_size]
     values_sample = company_counts_sample.keys().tolist()
     counts_sample = company_counts_sample.tolist()
@@ -166,12 +166,14 @@ def make_local_df(selected_bank, time_values, n_selection):
     if time_values is not None:
         time_values = time_slider_to_date(time_values)
         local_df = local_df[
-            (local_df["Date received"] >= time_values[0])
-            & (local_df["Date received"] <= time_values[1])
+            (local_df["Timestamp"] >= time_values[0])
+            & (local_df["Timestamp"] <= time_values[1])
         ]
-    if selected_bank:
-        local_df = local_df[local_df["Company"] == selected_bank]
+    if selected_bank != "*ALL*" and selected_bank != None:
+        local_df = local_df[local_df["User Company"] == selected_bank]
         add_stopwords(selected_bank)
+    elif selected_bank == "*ALL*" or selected_bank == None:
+        local_df = local_df
     return local_df
 
 
@@ -271,7 +273,7 @@ def populate_lda_scatter(tsne_df, df_top3words, df_dominant_topic):
 def plotly_wordcloud(data_frame):
     """A wonderful function that returns figure data for three equally
     wonderful plots: wordcloud, frequency histogram and treemap"""
-    complaints_text = list(data_frame["Consumer complaint narrative"].dropna().values)
+    complaints_text = list(data_frame["Conversation Notes"].dropna().values)
 
     if len(complaints_text) < 1:
         return {}, {}, {}
@@ -385,23 +387,23 @@ NAVBAR = dbc.Navbar(
                 [
                     dbc.Col(html.Img(src=PLOTLY_LOGO, height="30px")),
                     dbc.Col(
-                        dbc.NavbarBrand("Bank Customer Complaints", className="ml-2")
+                        dbc.NavbarBrand("Datastax TIL Report", className="ml-2")
                     ),
                 ],
                 align="center",
                 no_gutters=True,
             ),
-            href="https://plot.ly",
+            href="https://www.datastax.com",
         )
     ],
-    color="dark",
+    color="primary",
     dark=True,
     sticky="top",
 )
 
 LEFT_COLUMN = dbc.Jumbotron(
     [
-        html.H4(children="Select bank & dataset size", className="display-5"),
+        html.H4(children="Select Enterprise & dataset size", className="display-5"),
         html.Hr(className="my-2"),
         html.Label("Select percentage of dataset", className="lead"),
         html.P(
@@ -426,15 +428,15 @@ LEFT_COLUMN = dbc.Jumbotron(
                 90: "",
                 100: "100%",
             },
-            value=20,
+            value=100,
         ),
-        html.Label("Select a bank", style={"marginTop": 50}, className="lead"),
+        html.Label("Select an Enterprise", style={"marginTop": 50}, className="lead"),
         html.P(
             "(You can use the dropdown or click the barchart on the right)",
             style={"fontSize": 10, "font-weight": "lighter"},
         ),
         dcc.Dropdown(
-            id="bank-drop", clearable=False, style={"marginBottom": 50, "font-size": 12}
+            id="bank-drop", clearable=True, style={"marginBottom": 50, "font-size": 12}
         ),
         html.Label("Select time frame", className="lead"),
         html.Div(dcc.RangeSlider(id="time-window-slider"), style={"marginBottom": 50}),
@@ -445,80 +447,80 @@ LEFT_COLUMN = dbc.Jumbotron(
     ]
 )
 
-LDA_PLOT = dcc.Loading(
-    id="loading-lda-plot", children=[dcc.Graph(id="tsne-lda")], type="default"
-)
-LDA_TABLE = html.Div(
-    id="lda-table-block",
-    children=[
-        dcc.Loading(
-            id="loading-lda-table",
-            children=[
-                dash_table.DataTable(
-                    id="lda-table",
-                    style_cell_conditional=[
-                        {
-                            "if": {"column_id": "Text"},
-                            "textAlign": "left",
-                            "whiteSpace": "normal",
-                            "height": "auto",
-                            "min-width": "50%",
-                        }
-                    ],
-                    style_data_conditional=[
-                        {
-                            "if": {"row_index": "odd"},
-                            "backgroundColor": "rgb(243, 246, 251)",
-                        }
-                    ],
-                    style_cell={
-                        "padding": "16px",
-                        "whiteSpace": "normal",
-                        "height": "auto",
-                        "max-width": "0",
-                    },
-                    style_header={"backgroundColor": "white", "fontWeight": "bold"},
-                    style_data={"whiteSpace": "normal", "height": "auto"},
-                    filter_action="native",
-                    page_action="native",
-                    page_current=0,
-                    page_size=5,
-                    columns=[],
-                    data=[],
-                )
-            ],
-            type="default",
-        )
-    ],
-    style={"display": "none"},
-)
+#LDA_PLOT = dcc.Loading(
+#    id="loading-lda-plot", children=[dcc.Graph(id="tsne-lda")], type="default"
+#)
+#LDA_TABLE = html.Div(
+#    id="lda-table-block",
+#    children=[
+#        dcc.Loading(
+#            id="loading-lda-table",
+#            children=[
+#                dash_table.DataTable(
+#                    id="lda-table",
+#                    style_cell_conditional=[
+#                        {
+#                            "if": {"column_id": "Text"},
+#                            "textAlign": "left",
+#                            "whiteSpace": "normal",
+#                            "height": "auto",
+#                            "min-width": "50%",
+#                        }
+#                    ],
+#                    style_data_conditional=[
+#                        {
+#                            "if": {"row_index": "odd"},
+#                            "backgroundColor": "rgb(243, 246, 251)",
+#                        }
+#                    ],
+#                    style_cell={
+#                        "padding": "16px",
+#                        "whiteSpace": "normal",
+#                        "height": "auto",
+#                        "max-width": "0",
+#                    },
+#                    style_header={"backgroundColor": "white", "fontWeight": "bold"},
+#                    style_data={"whiteSpace": "normal", "height": "auto"},
+#                    filter_action="native",
+#                    page_action="native",
+#                    page_current=0,
+#                    page_size=5,
+#                    columns=[],
+#                    data=[],
+#                )
+#            ],
+#            type="default",
+#        )
+#    ],
+#    style={"display": "none"},
+#)
 
-LDA_PLOTS = [
-    dbc.CardHeader(html.H5("Topic modelling using LDA")),
-    dbc.Alert(
-        "Not enough data to render LDA plots, please adjust the filters",
-        id="no-data-alert-lda",
-        color="warning",
-        style={"display": "none"},
-    ),
-    dbc.CardBody(
-        [
-            html.P(
-                "Click on a complaint point in the scatter to explore that specific complaint",
-                className="mb-0",
-            ),
-            html.P(
-                "(not affected by sample size or time frame selection)",
-                style={"fontSize": 10, "font-weight": "lighter"},
-            ),
-            LDA_PLOT,
-            html.Hr(),
-            LDA_TABLE,
-        ]
-    ),
-]
+#LDA_PLOTS = [
+#    dbc.CardHeader(html.H5("Topic modelling using LDA")),
+#    dbc.Alert(
+#        "Not enough data to render LDA plots, please adjust the filters",
+#        id="no-data-alert-lda",
+#        color="warning",
+#        style={"display": "none"},
+#    ),
+#    dbc.CardBody(
+#        [
+#            html.P(
+#                "Click on a complaint point in the scatter to explore that specific complaint",
+#                className="mb-0",
+#            ),
+#            html.P(
+#                "(not affected by sample size or time frame selection)",
+#                style={"fontSize": 10, "font-weight": "lighter"},
+#            ),
+#            LDA_PLOT,
+#            html.Hr(),
+#            LDA_TABLE,
+#        ]
+#    ),
+#]
 WORDCLOUD_PLOTS = [
-    dbc.CardHeader(html.H5("Most frequently used words in complaints")),
+    dbc.CardHeader(html.H5("Most frequently used words in TILs")),
     dbc.Alert(
         "Not enough data to render these plots, please adjust the filters",
         id="no-data-alert",
@@ -542,22 +544,22 @@ WORDCLOUD_PLOTS = [
                                 id="tabs",
                                 children=[
                                     dcc.Tab(
-                                        label="Treemap",
+                                        label="Wordcloud",
                                         children=[
                                             dcc.Loading(
-                                                id="loading-treemap",
-                                                children=[dcc.Graph(id="bank-treemap")],
+                                                id="loading-wordcloud",
+                                                children=[dcc.Graph(id="bank-wordcloud")],
                                                 type="default",
                                             )
                                         ],
                                     ),
                                     dcc.Tab(
-                                        label="Wordcloud",
+                                        label="Treemap",
                                         children=[
                                             dcc.Loading(
-                                                id="loading-wordcloud",
+                                                id="loading-treemap",
                                                 children=[
-                                                    dcc.Graph(id="bank-wordcloud")
+                                                    dcc.Graph(id="bank-treemap")
                                                 ],
                                                 type="default",
                                             )
@@ -575,7 +577,7 @@ WORDCLOUD_PLOTS = [
 ]
 
 TOP_BANKS_PLOT = [
-    dbc.CardHeader(html.H5("Top 10 banks by number of complaints")),
+    dbc.CardHeader(html.H5("Top 10 Enterprises by number of TILs")),
     dbc.CardBody(
         [
             dcc.Loading(
@@ -595,104 +597,151 @@ TOP_BANKS_PLOT = [
         style={"marginTop": 0, "marginBottom": 0},
     ),
 ]
-
-TOP_BIGRAM_PLOT = [
-    dbc.CardHeader(html.H5("Top bigrams found in the database")),
+TIL_TABLE = [
+    dbc.CardHeader(html.H5("Most frequently used words in TILs")),
     dbc.CardBody(
         [
             dcc.Loading(
-                id="loading-bigrams-scatter",
+                id="loading-til-table",
                 children=[
-                    dbc.Alert(
-                        "Something's gone wrong! Give us a moment, but try loading this page again if problem persists.",
-                        id="no-data-alert-bigrams",
-                        color="warning",
-                        style={"display": "none"},
-                    ),
-                    dbc.Row(
-                        [
-                            dbc.Col(html.P(["Choose a t-SNE perplexity value:"]), md=6),
-                            dbc.Col(
-                                [
-                                    dcc.Dropdown(
-                                        id="bigrams-perplex-dropdown",
-                                        options=[
-                                            {"label": str(i), "value": i}
-                                            for i in range(3, 7)
-                                        ],
-                                        value=3,
-                                    )
-                                ],
-                                md=3,
-                            ),
-                        ]
-                    ),
-                    dcc.Graph(id="bigrams-scatter"),
+                    dash_table.DataTable(
+                        id="til-table",
+                        style_cell_conditional=[
+                            {
+                                "if": {"column_id": "Text"},
+                                "textAlign": "left",
+                                "whiteSpace": "normal",
+                                "height": "auto",
+                                "min-width": "50%",
+                            }
+                        ],
+                        style_data_conditional=[
+                            {
+                                "if": {"row_index": "odd"},
+                                "backgroundColor": "rgb(243, 246, 251)",
+                            }
+                        ],
+                        style_cell={
+                            "padding": "16px",
+                            "whiteSpace": "normal",
+                            "height": "auto",
+                            "max-width": "0",
+                        },
+                        style_header={"backgroundColor": "white", "fontWeight": "bold"},
+                        style_data={"whiteSpace": "normal", "height": "auto"},
+                        filter_action="native",
+                        page_action="native",
+                        page_current=0,
+                        page_size=5,
+                        columns=[],
+                        data=[],
+                    )
                 ],
                 type="default",
             )
         ],
-        style={"marginTop": 0, "marginBottom": 0},
-    ),
+        style={"display": "none"},
+    )
 ]
 
-TOP_BIGRAM_COMPS = [
-    dbc.CardHeader(html.H5("Comparison of bigrams for two companies")),
-    dbc.CardBody(
-        [
-            dcc.Loading(
-                id="loading-bigrams-comps",
-                children=[
-                    dbc.Alert(
-                        "Something's gone wrong! Give us a moment, but try loading this page again if problem persists.",
-                        id="no-data-alert-bigrams_comp",
-                        color="warning",
-                        style={"display": "none"},
-                    ),
-                    dbc.Row(
-                        [
-                            dbc.Col(html.P("Choose two companies to compare:"), md=12),
-                            dbc.Col(
-                                [
-                                    dcc.Dropdown(
-                                        id="bigrams-comp_1",
-                                        options=[
-                                            {"label": i, "value": i}
-                                            for i in bigram_df.company.unique()
-                                        ],
-                                        value="EQUIFAX, INC.",
-                                    )
-                                ],
-                                md=6,
-                            ),
-                            dbc.Col(
-                                [
-                                    dcc.Dropdown(
-                                        id="bigrams-comp_2",
-                                        options=[
-                                            {"label": i, "value": i}
-                                            for i in bigram_df.company.unique()
-                                        ],
-                                        value="TRANSUNION INTERMEDIATE HOLDINGS, INC.",
-                                    )
-                                ],
-                                md=6,
-                            ),
-                        ]
-                    ),
-                    dcc.Graph(id="bigrams-comps"),
-                ],
-                type="default",
-            )
-        ],
-        style={"marginTop": 0, "marginBottom": 0},
-    ),
-]
+
+#TOP_BIGRAM_PLOT = [
+#    dbc.CardHeader(html.H5("Top bigrams found in the database")),
+#    dbc.CardBody(
+#        [
+#            dcc.Loading(
+#                id="loading-bigrams-scatter",
+#                children=[
+#                    dbc.Alert(
+#                        "Something's gone wrong! Give us a moment, but try loading this page again if problem persists.",
+#                        id="no-data-alert-bigrams",
+#                        color="warning",
+#                        style={"display": "none"},
+#                    ),
+#                    dbc.Row(
+#                        [
+#                            dbc.Col(html.P(["Choose a t-SNE perplexity value:"]), md=6),
+#                            dbc.Col(
+#                                [
+#                                    dcc.Dropdown(
+#                                        id="bigrams-perplex-dropdown",
+#                                        options=[
+#                                            {"label": str(i), "value": i}
+#                                            for i in range(3, 7)
+#                                        ],
+#                                        value=3,
+#                                    )
+#                                ],
+#                                md=3,
+#                            ),
+#                        ]
+#                    ),
+#                    dcc.Graph(id="bigrams-scatter"),
+#                ],
+#                type="default",
+#            )
+#        ],
+#        style={"marginTop": 0, "marginBottom": 0},
+#    ),
+#]
+
+#TOP_BIGRAM_COMPS = [
+#    dbc.CardHeader(html.H5("Comparison of bigrams for two companies")),
+#    dbc.CardBody(
+#        [
+#            dcc.Loading(
+#                id="loading-bigrams-comps",
+#                children=[
+#                    dbc.Alert(
+#                        "Something's gone wrong! Give us a moment, but try loading this page again if problem persists.",
+#                        id="no-data-alert-bigrams_comp",
+#                        color="warning",
+#                        style={"display": "none"},
+#                    ),
+#                    dbc.Row(
+#                        [
+#                            dbc.Col(html.P("Choose two companies to compare:"), md=12),
+#                            dbc.Col(
+#                                [
+#                                    dcc.Dropdown(
+#                                        id="bigrams-comp_1",
+#                                        options=[
+#                                            {"label": i, "value": i}
+#                                            for i in bigram_df.company.unique()
+#                                        ],
+#                                        value="EQUIFAX, INC.",
+#                                    )
+#                                ],
+#                                md=6,
+#                            ),
+#                            dbc.Col(
+#                                [
+#                                    dcc.Dropdown(
+#                                        id="bigrams-comp_2",
+#                                        options=[
+#                                            {"label": i, "value": i}
+#                                            for i in bigram_df.company.unique()
+#                                        ],
+#                                        value="TRANSUNION INTERMEDIATE HOLDINGS, INC.",
+#                                    )
+#                                ],
+#                                md=6,
+#                            ),
+#                        ]
+#                    ),
+#                    dcc.Graph(id="bigrams-comps"),
+#                ],
+#                type="default",
+#            )
+#        ],
+#        style={"marginTop": 0, "marginBottom": 0},
+#    ),
+#]
 
 BODY = dbc.Container(
     [
-        dbc.Row([dbc.Col(dbc.Card(TOP_BIGRAM_COMPS)),], style={"marginTop": 30}),
-        dbc.Row([dbc.Col(dbc.Card(TOP_BIGRAM_PLOT)),], style={"marginTop": 30}),
+#        dbc.Row([dbc.Col(dbc.Card(TOP_BIGRAM_COMPS)),], style={"marginTop": 30}),
+#        dbc.Row([dbc.Col(dbc.Card(TOP_BIGRAM_PLOT)),], style={"marginTop": 30}),
         dbc.Row(
             [
                 dbc.Col(LEFT_COLUMN, md=4, align="center"),
@@ -701,7 +750,7 @@ BODY = dbc.Container(
             style={"marginTop": 30},
         ),
         dbc.Card(WORDCLOUD_PLOTS),
-        dbc.Row([dbc.Col([dbc.Card(LDA_PLOTS)])], style={"marginTop": 50}),
+#        dbc.Row([dbc.Col([dbc.Card(LDA_PLOTS)])], style={"marginTop": 50}),
     ],
     className="mt-12",
 )
@@ -717,60 +766,60 @@ app.layout = html.Div(children=[NAVBAR, BODY])
 """
 
 
-@app.callback(
-    Output("bigrams-scatter", "figure"), [Input("bigrams-perplex-dropdown", "value")],
-)
-def populate_bigram_scatter(perplexity):
-    X_embedded = TSNE(n_components=2, perplexity=perplexity).fit_transform(vects_df)
+#@app.callback(
+#    Output("bigrams-scatter", "figure"), [Input("bigrams-perplex-dropdown", "value")],
+#)
+#def populate_bigram_scatter(perplexity):
+#    X_embedded = TSNE(n_components=2, perplexity=perplexity).fit_transform(vects_df)
+#
+#    embed_df["tsne_1"] = X_embedded[:, 0]
+#    embed_df["tsne_2"] = X_embedded[:, 1]
+#    fig = px.scatter(
+#        embed_df,
+#        x="tsne_1",
+#        y="tsne_2",
+#        hover_name="bigram",
+#        text="bigram",
+#        size="count",
+#        color="words",
+#        size_max=45,
+#        template="plotly_white",
+#        title="Bigram similarity and frequency",
+#        labels={"words": "Avg. Length<BR>(words)"},
+#        color_continuous_scale=px.colors.sequential.Sunsetdark,
+#    )
+#    fig.update_traces(marker=dict(line=dict(width=1, color="Gray")))
+#    fig.update_xaxes(visible=False)
+#    fig.update_yaxes(visible=False)
+#    return fig
 
-    embed_df["tsne_1"] = X_embedded[:, 0]
-    embed_df["tsne_2"] = X_embedded[:, 1]
-    fig = px.scatter(
-        embed_df,
-        x="tsne_1",
-        y="tsne_2",
-        hover_name="bigram",
-        text="bigram",
-        size="count",
-        color="words",
-        size_max=45,
-        template="plotly_white",
-        title="Bigram similarity and frequency",
-        labels={"words": "Avg. Length<BR>(words)"},
-        color_continuous_scale=px.colors.sequential.Sunsetdark,
-    )
-    fig.update_traces(marker=dict(line=dict(width=1, color="Gray")))
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(visible=False)
-    return fig
 
+#@app.callback(
+#    Output("bigrams-comps", "figure"),
+#    [Input("bigrams-comp_1", "value"), Input("bigrams-comp_2", "value")],
+#)
+#def comp_bigram_comparisons(comp_first, comp_second):
+#    comp_list = [comp_first, comp_second]
+#    temp_df = bigram_df[bigram_df.company.isin(comp_list)]
+#    temp_df.loc[temp_df.company == comp_list[-1], "value"] = -temp_df[
+#        temp_df.company == comp_list[-1]
+#    ].value.values
 
-@app.callback(
-    Output("bigrams-comps", "figure"),
-    [Input("bigrams-comp_1", "value"), Input("bigrams-comp_2", "value")],
-)
-def comp_bigram_comparisons(comp_first, comp_second):
-    comp_list = [comp_first, comp_second]
-    temp_df = bigram_df[bigram_df.company.isin(comp_list)]
-    temp_df.loc[temp_df.company == comp_list[-1], "value"] = -temp_df[
-        temp_df.company == comp_list[-1]
-    ].value.values
-
-    fig = px.bar(
-        temp_df,
-        title="Comparison: " + comp_first + " | " + comp_second,
-        x="ngram",
-        y="value",
-        color="company",
-        template="plotly_white",
-        color_discrete_sequence=px.colors.qualitative.Bold,
-        labels={"company": "Company:", "ngram": "N-Gram"},
-        hover_data="",
-    )
-    fig.update_layout(legend=dict(x=0.1, y=1.1), legend_orientation="h")
-    fig.update_yaxes(title="", showticklabels=False)
-    fig.data[0]["hovertemplate"] = fig.data[0]["hovertemplate"][:-14]
-    return fig
+#    fig = px.bar(
+#        temp_df,
+#        title="Comparison: " + comp_first + " | " + comp_second,
+#        x="ngram",
+#        y="value",
+#        color="company",
+#        template="plotly_white",
+#        color_discrete_sequence=px.colors.qualitative.Bold,
+#        labels={"company": "Company:", "ngram": "N-Gram"},
+#        hover_data="",
+#    )
+#    fig.update_layout(legend=dict(x=0.1, y=1.1), legend_orientation="h")
+#    fig.update_yaxes(title="", showticklabels=False)
+#    fig.data[0]["hovertemplate"] = fig.data[0]["hovertemplate"][:-14]
+#    return fig
 
 
 @app.callback(
@@ -790,8 +839,8 @@ def populate_time_slider(value):
     needed data to the time-window-slider.
     """
     value += 0
-    min_date = GLOBAL_DF["Date received"].min()
-    max_date = GLOBAL_DF["Date received"].max()
+    min_date = GLOBAL_DF["Timestamp"].min()
+    max_date = GLOBAL_DF["Timestamp"].max()
 
     marks = make_marks_time_slider(min_date, max_date)
     min_epoch = list(marks.keys())[0]
@@ -858,33 +907,33 @@ def update_bank_sample_plot(n_value, time_values):
     return [{"data": data, "layout": layout}, {"display": "none"}]
 
 
-@app.callback(
-    [
-        Output("lda-table", "data"),
-        Output("lda-table", "columns"),
-        Output("tsne-lda", "figure"),
-        Output("no-data-alert-lda", "style"),
-    ],
-    [Input("bank-drop", "value"), Input("time-window-slider", "value")],
-)
-def update_lda_table(selected_bank, time_values):
-    """ Update LDA table and scatter plot based on precomputed data """
+#@app.callback(
+#    [
+#        Output("til-table", "data"),
+#        Output("til-table", "columns"),
+#        Output("tsne-lda", "figure"),
+#        Output("no-data-alert-lda", "style"),
+#    ],
+#    [Input("bank-drop", "value"), Input("time-window-slider", "value")],
+#)
+#def update_lda_table(selected_bank, time_values):
+#    """ Update LDA table and scatter plot based on precomputed data """
+#
+#    if selected_bank in PRECOMPUTED_LDA:
+#        df_dominant_topic = pd.read_json(
+#            PRECOMPUTED_LDA[selected_bank]["df_dominant_topic"]
+#        )
+#        tsne_df = pd.read_json(PRECOMPUTED_LDA[selected_bank]["tsne_df"])
+#        df_top3words = pd.read_json(PRECOMPUTED_LDA[selected_bank]["df_top3words"])
+#    else:
+#        return [[], [], {}, {}]
 
-    if selected_bank in PRECOMPUTED_LDA:
-        df_dominant_topic = pd.read_json(
-            PRECOMPUTED_LDA[selected_bank]["df_dominant_topic"]
-        )
-        tsne_df = pd.read_json(PRECOMPUTED_LDA[selected_bank]["tsne_df"])
-        df_top3words = pd.read_json(PRECOMPUTED_LDA[selected_bank]["df_top3words"])
-    else:
-        return [[], [], {}, {}]
+#    lda_scatter_figure = populate_lda_scatter(tsne_df, df_top3words, df_dominant_topic)
 
-    lda_scatter_figure = populate_lda_scatter(tsne_df, df_top3words, df_dominant_topic)
+#    columns = [{"name": i, "id": i} for i in df_dominant_topic.columns]
+#    data = df_dominant_topic.to_dict("records")
 
-    columns = [{"name": i, "id": i} for i in df_dominant_topic.columns]
-    data = df_dominant_topic.to_dict("records")
-
-    return (data, columns, lda_scatter_figure, {"display": "none"})
+#    return (data, columns, lda_scatter_figure, {"display": "none"})
 
 
 @app.callback(
@@ -911,28 +960,28 @@ def update_wordcloud_plot(value_drop, time_values, n_selection):
     return (wordcloud, frequency_figure, treemap, alert_style)
 
 
-@app.callback(
-    [Output("lda-table", "filter_query"), Output("lda-table-block", "style")],
-    [Input("tsne-lda", "clickData")],
-    [State("lda-table", "filter_query")],
-)
-def filter_table_on_scatter_click(tsne_click, current_filter):
-    """ TODO """
-    if tsne_click is not None:
-        selected_complaint = tsne_click["points"][0]["hovertext"]
-        if current_filter != "":
-            filter_query = (
-                "({Document_No} eq "
-                + str(selected_complaint)
-                + ") || ("
-                + current_filter
-                + ")"
-            )
-        else:
-            filter_query = "{Document_No} eq " + str(selected_complaint)
-        print("current_filter", current_filter)
-        return (filter_query, {"display": "block"})
-    return ["", {"display": "none"}]
+#@app.callback(
+#    [Output("lda-table", "filter_query"), Output("lda-table-block", "style")],
+#    [Input("tsne-lda", "clickData")],
+#    [State("lda-table", "filter_query")],
+#)
+#def filter_table_on_scatter_click(tsne_click, current_filter):
+#    """ TODO """
+#    if tsne_click is not None:
+#        selected_complaint = tsne_click["points"][0]["hovertext"]
+#        if current_filter != "":
+#            filter_query = (
+#                "({Document_No} eq "
+#                + str(selected_complaint)
+#                + ") || ("
+#                + current_filter
+#                + ")"
+#            )
+#        else:
+#            filter_query = "{Document_No} eq " + str(selected_complaint)
+#        print("current_filter", current_filter)
+#        return (filter_query, {"display": "block"})
+#    return ["", {"display": "none"}]
 
 
 @app.callback(Output("bank-drop", "value"), [Input("bank-sample", "clickData")])
@@ -941,7 +990,7 @@ def update_bank_drop_on_click(value):
     if value is not None:
         selected_bank = value["points"][0]["x"]
         return selected_bank
-    return "EQUIFAX, INC."
+    return "*ALL*"
 
 
 if __name__ == "__main__":
